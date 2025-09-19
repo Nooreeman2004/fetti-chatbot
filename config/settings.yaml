@@ -1,0 +1,2 @@
+database_path: "./database/transportation.db"
+chroma_persist_dir: "./embeddings/chromadb"

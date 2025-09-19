@@ -1,0 +1,9 @@
+pandas
+sqlalchemy
+pinecone-client
+langchain
+openai
+python-dotenv
+streamlit
+pytest
+numpy

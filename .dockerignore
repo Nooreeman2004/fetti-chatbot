@@ -1,0 +1,73 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Documentation
+README.md
+ENHANCEMENTS.md
+*.md
+
+# Test files
+tests/
+test_*.py
+
+# Temporary files
+*.tmp
+*.temp
+
+# Node modules (if any)
+node_modules/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Database files (will be created in container)
+database/*.db
+database/*.sqlite3
+
+# Embeddings (will be created in container)
+embeddings/chromadb/
+embeddings/vectordb/
+embeddings/embeddings/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
