@@ -6,7 +6,7 @@ import logging
 from typing import Dict, List, Any, Tuple, Optional
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import openai
 
 # Load environment variables
@@ -32,6 +32,7 @@ class SQLEngine:
         self.db_path = db_path
         self.engine = None
         self.schema_info = {}
+        self.data_quality_info = {}
         
         # Load OpenAI API key
         if openai_api_key:
@@ -47,6 +48,7 @@ class SQLEngine:
         # Initialize database connection
         self.connect_to_database()
         self.load_schema_info()
+        self.assess_data_quality()
         
         # SQL generation prompts
         self.sql_prompt_template = self._initialize_sql_prompt()
@@ -92,89 +94,97 @@ class SQLEngine:
         except Exception as e:
             logger.error(f"Error loading schema info: {e}")
     
+    def assess_data_quality(self):
+        """Assess data quality to inform SQL generation"""
+        try:
+            with self.engine.connect() as conn:
+                # Check CustomerDemographics data quality
+                result = conn.execute(text("SELECT COUNT(*) as total, COUNT(Age) as with_age FROM CustomerDemographics"))
+                demo_stats = result.fetchone()
+                
+                # Check TripData date range
+                result = conn.execute(text("SELECT MIN(TripDate) as min_date, MAX(TripDate) as max_date, COUNT(*) as total_trips FROM TripData"))
+                trip_stats = result.fetchone()
+                
+                # Check CheckedInUsers
+                result = conn.execute(text("SELECT COUNT(*) as total_checkins FROM CheckedInUsers"))
+                checkin_stats = result.fetchone()
+                
+                self.data_quality_info = {
+                    'demographics': {
+                        'total_users': demo_stats[0],
+                        'users_with_age': demo_stats[1],
+                        'missing_age_count': demo_stats[0] - demo_stats[1]
+                    },
+                    'trips': {
+                        'total_trips': trip_stats[2],
+                        'date_range': {
+                            'min': trip_stats[0],
+                            'max': trip_stats[1]
+                        }
+                    },
+                    'checkins': {
+                        'total_checkins': checkin_stats[0]
+                    }
+                }
+                
+                logger.info(f"Data quality assessment completed: {self.data_quality_info}")
+                
+        except Exception as e:
+            logger.error(f"Error assessing data quality: {e}")
+            self.data_quality_info = {}
+    
     def _initialize_sql_prompt(self) -> str:
         """Initialize the prompt template for SQL generation"""
-        return """You are a SQL expert for Fetii's Austin rideshare database. Generate EXACT SQL queries that return precise data.
-
-CRITICAL REQUIREMENTS:
-1. Use EXACT column names and table names as provided in schema
-2. For location queries, use LIKE with wildcards: WHERE column LIKE '%keyword%'
-3. For date queries, use DATE() function for SQLite: WHERE DATE(TripDate) = 'YYYY-MM-DD'
-4. For group size queries, use TotalPassengers column from TripData table
-5. For age queries, use Age column from CustomerDemographics table
-6. Always JOIN tables properly when needed
-7. Count records with COUNT(*), not estimations
-8. Use DISTINCT when counting unique entities
+        return """You are a SQL expert for Fetii's Austin group rideshare database. Convert natural language queries into accurate SQL queries.
 
 Database Schema:
 {schema}
 
-Fetii-Specific Rules:
-1. Use proper SQLite syntax
-2. Always use table aliases for clarity
-3. Use proper JOIN syntax when multiple tables are needed
-4. Include appropriate WHERE clauses for filtering
-5. Use aggregate functions (COUNT, SUM, AVG, etc.) when needed
-6. For date filtering: TripDate is stored as TEXT in format 'MM/DD/YY HH:MM'
-7. For time analysis: Use strftime('%H', TripDate) for hour, strftime('%w', TripDate) for day of week
-8. For age filtering: JOIN with CustomerDemographics and filter by Age ranges
-9. For location filtering: Use LIKE with % wildcards for partial matches
-10. For group size: Use TotalPassengers column for group size analysis
+Data Quality Information:
+{data_quality}
 
-Fetii Query Examples:
-- "How many groups went to Moody Center last month?" → 
-  SELECT COUNT(*) as moody_trips 
-  FROM TripData 
-  WHERE DropOffAddress LIKE '%Moody%' 
-    AND DATE(TripDate) >= DATE('now', '-1 month')
-- "Top drop-off spots for 18-24 year-olds on Saturday nights?" → 
-  SELECT t.DropOffAddress, COUNT(*) as trip_count
-  FROM TripData t
-  JOIN CheckedInUsers ci ON t.TripID = ci.TripID
-  JOIN CustomerDemographics cd ON ci.UserID = cd.UserID
-  WHERE cd.Age BETWEEN 18 AND 24 
-    AND strftime('%w', t.TripDate) = '6' 
-    AND strftime('%H', t.TripDate) >= '18'
-  GROUP BY t.DropOffAddress
-  ORDER BY trip_count DESC
-  LIMIT 10
-- "When do large groups (6+ riders) typically ride downtown?" → 
-  SELECT strftime('%H', TripDate) as hour, COUNT(*) as trip_count
-  FROM TripData 
-  WHERE TotalPassengers >= 6 
-    AND (DropOffAddress LIKE '%downtown%' OR DropOffAddress LIKE '%6th%')
-  GROUP BY hour
-  ORDER BY trip_count DESC
-- "What's the average group size for Fetii rides in Austin?" →
-  SELECT AVG(TotalPassengers) as avg_group_size, 
-         COUNT(*) as total_trips,
-         MIN(TotalPassengers) as min_group_size,
-         MAX(TotalPassengers) as max_group_size
-  FROM TripData
-- "Which Austin neighborhoods have the most Fetii activity?" →
-  SELECT 
-    CASE 
-      WHEN DropOffAddress LIKE '%downtown%' OR DropOffAddress LIKE '%6th%' THEN 'Downtown'
-      WHEN DropOffAddress LIKE '%moody%' THEN 'Moody Center Area'
-      WHEN DropOffAddress LIKE '%university%' OR DropOffAddress LIKE '%campus%' THEN 'University Area'
-      WHEN DropOffAddress LIKE '%south%' THEN 'South Austin'
-      WHEN DropOffAddress LIKE '%north%' THEN 'North Austin'
-      ELSE 'Other'
-    END as neighborhood,
-    COUNT(*) as trip_count
-  FROM TripData
-  GROUP BY neighborhood
-  ORDER BY trip_count DESC
+CRITICAL Fetii-Specific Rules:
+1. Use proper SQLite syntax with correct table and column names from the actual schema above
+2. Always use table aliases for clarity (cd for CustomerDemographics, td for TripData, ci for CheckedInUsers)
+3. TripDate is stored as TEXT in 'YYYY-MM-DD HH:MM:SS' format - use DATE() and STRFTIME() functions
+4. For temporal queries, check the actual date range in the data before filtering
+5. For age filtering: JOIN with CustomerDemographics, but handle NULL ages with proper WHERE clauses
+6. For location filtering: Use LIKE with % wildcards, case-insensitive with LOWER()
+7. For group size: Use TotalPassengers column directly from TripData
+8. For time analysis: Use STRFTIME('%H', TripDate) for hour, STRFTIME('%w', TripDate) for day of week (0=Sunday, 6=Saturday)
+9. For Saturday nights: STRFTIME('%w', TripDate) = '6' AND STRFTIME('%H', TripDate) >= '18'
+10. Always handle NULL values appropriately with COALESCE or IS NOT NULL checks
+
+Location Matching Patterns for Austin:
+- Moody Center: DropOffAddress LIKE '%Moody%' OR DropOffAddress LIKE '%moody%'
+- Downtown: DropOffAddress LIKE '%downtown%' OR DropOffAddress LIKE '%6th%' OR DropOffAddress LIKE '%5th%'
+- UT Campus: DropOffAddress LIKE '%Campus%' OR DropOffAddress LIKE '%University%'
+- Airport: DropOffAddress LIKE '%Airport%'
+
+Time-based Query Guidelines:
+- For "last month" queries, use the actual data date range to determine appropriate filtering
+- For recent data, use relative date calculations
+- For historical data, use absolute date ranges
+
+Example Query Patterns:
+- Count queries: SELECT COUNT(*) as count_name FROM table WHERE conditions
+- Top/ranking queries: SELECT columns, COUNT(*) as frequency FROM table GROUP BY columns ORDER BY frequency DESC LIMIT N
+- Time analysis: SELECT STRFTIME('%H', TripDate) as hour, COUNT(*) FROM TripData GROUP BY hour
+- Demographic analysis: Always JOIN with CustomerDemographics and filter out NULL ages when needed
 
 Natural Language Query: {query}
 
-SQL Query:"""
+Generate ONLY the SQL query without explanations:"""
     
     def get_schema_context(self) -> str:
         """Generate schema context for SQL prompt"""
-        schema_text = "Tables and Columns:\n\n"
+        schema_text = "Actual Database Tables and Columns:\n\n"
         
         for table, info in self.schema_info.items():
+            if table == 'sqlite_sequence':  # Skip system table
+                continue
+                
             schema_text += f"{table}:\n"
             for col in info['columns']:
                 schema_text += f"  - {col['name']} ({col['type']})\n"
@@ -183,21 +193,42 @@ SQL Query:"""
                 for fk in info['foreign_keys']:
                     schema_text += f"    - {fk['constrained_columns']} → {fk['referred_table']}.{fk['referred_columns']}\n"
             schema_text += "\n"
-
-        # Derived analytics views to improve query accuracy
-        schema_text += (
-            "Derived Views Available:\n"
-            "- TripFeatures(TripID, BookingUserID, PickUpAddress, DropOffAddress, TotalPassengers, TripDateTime, TripDate, TripYearMonth, TripHour, TripWeekday, IsWeekend, PickUpLabel, DropOffLabel)\n"
-            "- TripPassengerAges(TripID, UserID, Age)\n"
-            "- TripPassengerStats(TripID, passenger_count, avg_age, min_age, max_age, under18_count, age18_24_count, age20_25_count, over30_count)\n\n"
-            "Notes:\n"
-            "- TripDate is ISO ('YYYY-MM-DD HH:MM:SS'); use DATE(TripDate) and STRFTIME for filters.\n"
-            "- Saturday = TripWeekday = 6; Weekend flag IsWeekend=1.\n"
-            "- Downtown bars may appear in DropOffAddress with '6th' or 'Downtown'.\n"
-            "- Moody Center via DropOffLabel='Moody Center' or DropOffAddress LIKE '%Moody%'.\n\n"
-        )
         
         return schema_text
+    
+    def get_data_quality_context(self) -> str:
+        """Generate data quality context for SQL prompt"""
+        if not self.data_quality_info:
+            return "Data quality information not available."
+        
+        context = "Current Data Quality Status:\n\n"
+        
+        # Demographics info
+        demo = self.data_quality_info.get('demographics', {})
+        if demo:
+            context += f"CustomerDemographics: {demo.get('total_users', 0)} total users\n"
+            context += f"  - Users with age data: {demo.get('users_with_age', 0)}\n"
+            context += f"  - Missing age data: {demo.get('missing_age_count', 0)} users\n\n"
+        
+        # Trip data info
+        trips = self.data_quality_info.get('trips', {})
+        if trips:
+            context += f"TripData: {trips.get('total_trips', 0)} total trips\n"
+            date_range = trips.get('date_range', {})
+            if date_range:
+                context += f"  - Date range: {date_range.get('min', 'Unknown')} to {date_range.get('max', 'Unknown')}\n\n"
+        
+        # Checkins info
+        checkins = self.data_quality_info.get('checkins', {})
+        if checkins:
+            context += f"CheckedInUsers: {checkins.get('total_checkins', 0)} total check-ins\n\n"
+        
+        context += "Important Notes:\n"
+        context += "- Always filter out NULL ages when age is required for analysis\n"
+        context += "- Use actual date ranges for temporal filtering\n"
+        context += "- Consider data completeness when interpreting results\n"
+        
+        return context
     
     def translate_to_sql(self, natural_query: str) -> Dict[str, Any]:
         """
@@ -219,10 +250,12 @@ SQL Query:"""
         try:
             # Prepare schema context
             schema_context = self.get_schema_context()
+            data_quality_context = self.get_data_quality_context()
             
             # Format prompt
             prompt = self.sql_prompt_template.format(
                 schema=schema_context,
+                data_quality=data_quality_context,
                 query=natural_query
             )
             
@@ -233,10 +266,10 @@ SQL Query:"""
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a SQL expert. Generate clean, executable SQL queries."},
+                    {"role": "system", "content": "You are a SQL expert. Generate clean, executable SQL queries that handle NULL values and use proper SQLite syntax."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=300,
+                max_tokens=400,
                 temperature=0.1
             )
             
@@ -247,6 +280,9 @@ SQL Query:"""
             sql_query = re.sub(r'^```sql\s*', '', sql_query)
             sql_query = re.sub(r'\s*```$', '', sql_query)
             sql_query = sql_query.strip()
+            
+            # Remove any trailing semicolon for consistency
+            sql_query = sql_query.rstrip(';')
             
             return {
                 'success': True,
@@ -411,6 +447,9 @@ SQL Query:"""
                     'execution_time': execution_result['execution_time'],
                     'data_type': execution_result['data_type']
                 })
+                
+                # Add data quality notes
+                result['data_quality_notes'] = self._generate_data_quality_notes(execution_result['data'])
             else:
                 result.update({
                     'error': execution_result['error'],
@@ -428,228 +467,101 @@ SQL Query:"""
                 'natural_query': natural_query
             }
     
-    def validate_and_enhance_query(self, sql_query: str, natural_query: str) -> Dict[str, Any]:
-        """
-        Validate and enhance SQL query with Fetii-specific improvements
+    def _generate_data_quality_notes(self, data) -> str:
+        """Generate data quality notes for the results"""
+        notes = []
         
-        Args:
-            sql_query: Generated SQL query
-            natural_query: Original natural language query
-            
-        Returns:
-            Dictionary with validation results and enhanced query
-        """
         try:
-            # Basic validation
-            validation = self.validate_sql_query(sql_query)
-            if not validation['valid']:
-                return {
-                    'valid': False,
-                    'error': validation['error'],
-                    'enhanced_query': sql_query
-                }
-            
-            # Fetii-specific enhancements
-            enhanced_query = sql_query
-            
-            # Add LIMIT if missing for large result sets
-            if 'SELECT' in sql_query.upper() and 'LIMIT' not in sql_query.upper():
-                if 'COUNT(' in sql_query.upper() or 'AVG(' in sql_query.upper() or 'SUM(' in sql_query.upper():
-                    # Aggregation queries don't need LIMIT
-                    pass
-                else:
-                    enhanced_query += ' LIMIT 100'
-            
-            # Ensure proper ordering for ranking queries
-            if any(word in natural_query.lower() for word in ['top', 'most', 'highest', 'best']):
-                if 'ORDER BY' not in sql_query.upper():
-                    # Try to add ordering based on context
-                    if 'COUNT(' in sql_query.upper():
-                        enhanced_query += ' ORDER BY COUNT(*) DESC'
-                    elif 'AVG(' in sql_query.upper():
-                        enhanced_query += ' ORDER BY AVG(*) DESC'
-            
-            # Add proper aliases for better readability
-            if 'SELECT COUNT(*)' in sql_query.upper():
-                enhanced_query = sql_query.replace('COUNT(*)', 'COUNT(*) as count')
-            
-            return {
-                'valid': True,
-                'enhanced_query': enhanced_query,
-                'original_query': sql_query,
-                'improvements': ['Added LIMIT clause', 'Added proper ordering', 'Added column aliases']
-            }
-            
+            if hasattr(data, 'empty') and data.empty:
+                notes.append("Query returned no results")
+            elif hasattr(data, '__len__') and len(data) == 0:
+                notes.append("Query returned empty dataset")
+            else:
+                # Check for null values in results
+                if hasattr(data, 'isnull'):
+                    null_counts = data.isnull().sum()
+                    if null_counts.any():
+                        null_cols = [col for col, count in null_counts.items() if count > 0]
+                        notes.append(f"Some null values found in: {', '.join(null_cols)}")
+                
+                # Check for age-related queries
+                if hasattr(data, 'columns') and any('age' in col.lower() for col in data.columns):
+                    demo_info = self.data_quality_info.get('demographics', {})
+                    missing_age = demo_info.get('missing_age_count', 0)
+                    if missing_age > 0:
+                        notes.append(f"Note: {missing_age} users have missing age data")
+        
         except Exception as e:
-            logger.error(f"Error enhancing query: {e}")
-            return {
-                'valid': False,
-                'error': str(e),
-                'enhanced_query': sql_query
-            }
+            logger.warning(f"Error generating data quality notes: {e}")
+            notes.append("Data quality assessment unavailable")
+        
+        return "; ".join(notes) if notes else "Data appears complete"
     
     def get_sample_queries(self) -> List[Dict[str, str]]:
         """Return sample queries for testing"""
         return [
             {
-                'natural': 'How many groups went to Moody Center?',
-                'sql': "SELECT COUNT(*) as moody_trips FROM TripData WHERE DropOffAddress LIKE '%Moody%'"
-            },
-            {
-                'natural': 'Show me users older than 25',
-                'sql': 'SELECT * FROM CustomerDemographics WHERE Age > 25'
-            },
-            {
-                'natural': 'What is the average number of passengers per trip?',
-                'sql': 'SELECT AVG(TotalPassengers) as avg_passengers FROM TripData'
-            },
-            {
-                'natural': 'List all trips with more than 8 passengers',
-                'sql': 'SELECT TripID, PickUpAddress, DropOffAddress, TotalPassengers FROM TripData WHERE TotalPassengers > 8'
-            },
-            {
-                'natural': 'Show user demographics for trip 726765',
-                'sql': '''SELECT cd.UserID, cd.Name, cd.Age, cd.Gender 
-                         FROM CustomerDemographics cd 
-                         JOIN CheckedInUsers ci ON cd.UserID = ci.UserID 
-                         WHERE ci.TripID = 726765'''
-            },
-            {
-                'natural': 'Count trips by user age groups',
-                'sql': '''SELECT 
-                            CASE 
-                                WHEN cd.Age < 25 THEN 'Under 25'
-                                WHEN cd.Age BETWEEN 25 AND 35 THEN '25-35'
-                                WHEN cd.Age > 35 THEN 'Over 35'
-                                ELSE 'Unknown'
-                            END as age_group,
-                            COUNT(DISTINCT t.TripID) as trip_count
-                         FROM CustomerDemographics cd
-                         JOIN CheckedInUsers ci ON cd.UserID = ci.UserID
-                         JOIN TripData t ON ci.TripID = t.TripID
-                         GROUP BY age_group'''
-            },
-            {
                 'natural': 'How many groups went to Moody Center last month?',
-                'sql': "SELECT COUNT(*) as moody_trips FROM TripData WHERE DropOffAddress LIKE '%Moody%' AND DATE(TripDate) >= DATE('now', '-1 month')"
+                'description': 'Count trips to Moody Center with temporal filtering'
             },
             {
                 'natural': 'What are the top drop-off spots for 18-24 year-olds on Saturday nights?',
-                'sql': '''SELECT t.DropOffAddress, COUNT(*) as trip_count
-                         FROM TripData t
-                         JOIN CheckedInUsers ci ON t.TripID = ci.TripID
-                         JOIN CustomerDemographics cd ON ci.UserID = cd.UserID
-                         WHERE cd.Age BETWEEN 18 AND 24 
-                           AND strftime('%w', t.TripDate) = '6' 
-                           AND strftime('%H', t.TripDate) >= '18'
-                         GROUP BY t.DropOffAddress
-                         ORDER BY trip_count DESC
-                         LIMIT 10'''
+                'description': 'Demographic and temporal analysis with location ranking'
             },
             {
                 'natural': 'When do large groups (6+ riders) typically ride downtown?',
-                'sql': '''SELECT strftime('%H', TripDate) as hour, COUNT(*) as trip_count
-                         FROM TripData 
-                         WHERE TotalPassengers >= 6 
-                           AND (DropOffAddress LIKE '%downtown%' OR DropOffAddress LIKE '%6th%')
-                         GROUP BY hour
-                         ORDER BY trip_count DESC'''
+                'description': 'Time analysis for large groups with location filtering'
+            },
+            {
+                'natural': 'What is the average group size for Fetii rides?',
+                'description': 'Simple aggregation query'
+            },
+            {
+                'natural': 'How many users are in the database?',
+                'description': 'Basic count query'
+            },
+            {
+                'natural': 'Show me trips with more than 8 passengers',
+                'description': 'Filtering by group size'
             }
         ]
-    
-    def test_connection(self) -> Dict[str, Any]:
-        """Test database connection and return basic stats"""
-        try:
-            with self.engine.connect() as conn:
-                stats = {}
-                
-                # Get table counts
-                for table in self.schema_info.keys():
-                    count_result = conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
-                    stats[f"{table}_count"] = count_result.scalar()
-                
-                # Test a simple query
-                test_query = "SELECT COUNT(*) as total FROM CustomerDemographics"
-                test_result = conn.execute(text(test_query))
-                
-                return {
-                    'success': True,
-                    'connection_status': 'Connected',
-                    'tables': list(self.schema_info.keys()),
-                    'stats': stats,
-                    'openai_available': bool(self.openai_api_key)
-                }
-                
-        except Exception as e:
-            return {
-                'success': False,
-                'error': str(e),
-                'connection_status': 'Failed'
-            }
 
 def main():
     """Test the SQL Engine functionality"""
-    # Initialize SQL Engine
-    sql_engine = SQLEngine()
-    
     print("Testing SQL Engine")
-    print("=" * 50)
+    print("=" * 60)
     
-    # Test connection
-    connection_test = sql_engine.test_connection()
-    print(f"Connection Status: {connection_test}")
-    print()
-    
-    if not connection_test['success']:
-        print("Database connection failed. Cannot proceed with tests.")
+    # Initialize engine
+    try:
+        engine = SQLEngine()
+    except Exception as e:
+        print(f"Failed to initialize SQL Engine: {e}")
         return
     
+    # Display data quality info
+    print("Data Quality Assessment:")
+    print("-" * 40)
+    print(engine.get_data_quality_context())
+    
     # Test sample queries
-    sample_queries = sql_engine.get_sample_queries()
+    sample_queries = engine.get_sample_queries()
     
-    print("Testing Natural Language to SQL Translation:")
-    print("-" * 50)
-    
-    for i, query_info in enumerate(sample_queries[:3], 1):  # Test first 3 queries
-        natural_query = query_info['natural']
-        expected_sql = query_info['sql']
+    for i, query_info in enumerate(sample_queries[:3], 1):  # Test first 3
+        print(f"\n{i}. Testing: '{query_info['natural']}'")
+        print(f"   Description: {query_info['description']}")
+        print("-" * 40)
         
-        print(f"\n{i}. Natural Query: {natural_query}")
+        result = engine.process_natural_language_query(query_info['natural'])
         
-        # Test translation
-        translation_result = sql_engine.translate_to_sql(natural_query)
-        if translation_result['success']:
-            print(f"   Generated SQL: {translation_result['sql_query']}")
+        print(f"Success: {result['success']}")
+        if result['success']:
+            print(f"Generated SQL: {result['sql_query']}")
+            print(f"Rows returned: {result['row_count']}")
+            print(f"Data quality: {result.get('data_quality_notes', 'N/A')}")
+            if result['row_count'] > 0 and hasattr(result['data'], 'head'):
+                print(f"Sample data:\n{result['data'].head(2)}")
         else:
-            print(f"   Translation Error: {translation_result['error']}")
-        
-        # Test execution with expected SQL
-        print(f"   Testing with expected SQL...")
-        execution_result = sql_engine.execute_sql_query(expected_sql)
-        if execution_result['success']:
-            print(f"   Result: {execution_result['row_count']} rows returned")
-            if hasattr(execution_result['data'], 'head'):
-                print(f"   Sample data:\n{execution_result['data'].head()}")
-        else:
-            print(f"   Execution Error: {execution_result['error']}")
-    
-    # Test complete pipeline
-    print(f"\n{'='*50}")
-    print("Testing Complete Pipeline (NL → SQL → Results):")
-    print("-" * 50)
-    
-    test_query = "How many users are in the database?"
-    print(f"\nQuery: {test_query}")
-    
-    pipeline_result = sql_engine.process_natural_language_query(test_query)
-    
-    if pipeline_result['success']:
-        print(f"Generated SQL: {pipeline_result['sql_query']}")
-        print(f"Execution Time: {pipeline_result['execution_time']:.3f} seconds")
-        print(f"Results: {pipeline_result['row_count']} rows")
-        print(f"Data: {pipeline_result['data']}")
-    else:
-        print(f"Pipeline Error ({pipeline_result['stage']}): {pipeline_result['error']}")
+            print(f"Error: {result['error']}")
 
 if __name__ == "__main__":
     main()

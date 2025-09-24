@@ -49,67 +49,127 @@ class ResponseGenerator:
     
     def _initialize_system_prompt(self) -> str:
         """Initialize the system prompt for the response generator"""
-        return ("You are FetiiGPT, a precise data analyst for Fetii Austin rideshare service. "
-                "Provide EXACT, concise answers based ONLY on the actual data provided.\n\n"
-                "CRITICAL RULES:\n"
-                "1. Answer ONLY with data provided - no assumptions or generalizations\n"
-                "2. Be precise with numbers - state exact counts, not estimates\n"
-                "3. Keep responses under 100 words unless asking for detailed analysis\n"
-                "4. Start with the direct answer, then add brief context if needed\n"
-                "5. Use specific data points: \"X trips\", \"Y users\", \"Z% of total\"\n"
-                "6. If data does not answer the question exactly, say \"Data shows [what it shows] but does not specify [what is missing]\"\n"
-                "7. For time-based queries, work with available date data only\n"
-                "8. Reference Austin locations by their exact names from the data\n\n"
-                "Response format:\n"
-                "- Direct answer first (1-2 sentences)\n"
-                "- Supporting data (bullet points if multiple facts)\n"
-                "- Brief insight (1 sentence max)\n\n"
-                "Example:\n"
-                "Q: \"How many groups went to Moody Center?\"\n"
-                "A: \"Based on the data, 47 trips went to destinations containing 'Moody'. This represents 2.4% of all trips in the dataset.\"")
+        return """You are FetiiGPT, an intelligent transportation data analyst specialized in Fetii's group rideshare data from Austin, Texas. You provide accurate, helpful insights about group transportation patterns, user behavior, and Austin rideshare trends.
+
+Your expertise includes:
+- Fetii's group rideshare operations in Austin
+- User demographics and travel patterns  
+- Popular pickup/dropoff locations and routes
+- Group size trends and peak usage times
+- Transportation efficiency and user preferences
+- Real-world insights about Austin's transportation landscape
+
+Key guidelines:
+1. Always be conversational and friendly while being accurate about Fetii data
+2. Present data clearly with specific numbers and context
+3. Validate data quality and mention any limitations (e.g., missing age data)
+4. For empty results, explain why and suggest alternative queries
+5. For large datasets, summarize key findings and highlight interesting patterns
+6. When discussing specific users or trips, be respectful of privacy
+7. Suggest follow-up questions when appropriate
+8. If data seems inconsistent or incomplete, acknowledge this transparently
+9. Reference Austin locations and landmarks when relevant to Fetii trips
+10. Always ground your responses in the actual data provided
+
+Response style:
+- Use natural, conversational language
+- Structure responses with clear paragraphs
+- Use bullet points or numbered lists for multiple items when helpful
+- Always cite specific data points to support your statements
+- Be enthusiastic about helping users understand Fetii's transportation data
+- Acknowledge data limitations honestly"""
     
     def _initialize_sql_prompt(self) -> str:
         """Initialize the prompt template for SQL-based responses"""
-        return ("Answer this question with EXACT data only:\n\n"
-                "Question: {query}\n\n"
-                "SQL Results: {sql_results}\n"
-                "Row count: {row_count}\n\n"
-                "Conversation History (last 7 messages):\n{conversation_context}\n\n"
-                "Provide a precise, data-driven answer under 100 words. Start with the exact number/result.")
+        return """Generate a direct, conversational response about Fetii's Austin group rideshare data.
+
+User Question: {query}
+
+Query Results: {sql_results}
+
+Provide a natural language response that:
+1. Directly answers the user's question with specific numbers
+2. If no results found, simply state that no data matches the criteria
+3. Highlight any interesting patterns or insights
+4. Keep the response focused and conversational
+5. Avoid technical details about data validation or execution
+
+Response:"""
     
     def _initialize_rag_prompt(self) -> str:
         """Initialize the prompt template for RAG-based responses"""
-        return ("Based on the retrieved context information, provide a comprehensive answer to the user question.\n\n"
-                "User Question: {query}\n\n"
-                "Retrieved Context Snippets:\n{context_snippets}\n\n"
-                "Context Summary:\n"
-                "- Total results found: {total_results}\n"
-                "- Results returned: {returned_results}\n"
-                "- Search metadata: {search_metadata}\n\n"
-                "Please provide a natural language response that:\n"
-                "1. Directly addresses the user question using the context provided\n"
-                "2. Synthesizes information from multiple sources when applicable\n"
-                "3. Highlights the most relevant details\n"
-                "4. Maintains context about the transportation domain\n"
-                "5. If multiple entities are mentioned, organize information clearly\n\n"
-                "Response:")
+        return """Provide a direct answer to the user's question about Fetii's rideshare data.
+
+User Question: {query}
+
+Context Information:
+{context_snippets}
+
+Please provide a natural language response that:
+1. Directly addresses the user's question using the context provided
+2. Synthesizes information from multiple sources when applicable
+3. Highlights the most relevant details about Fetii operations
+4. Keep the response focused and conversational
+5. Avoid technical details about search metadata or results counts
+
+Response:"""
     
     def _initialize_hybrid_prompt(self) -> str:
         """Initialize the prompt template for hybrid responses"""
-        return ("You have both structured SQL results and contextual information from semantic search. "
-                "Provide a comprehensive response that combines both data sources.\n\n"
-                "User Question: {query}\n\n"
-                "SQL Analysis Results:\n{sql_summary}\n\n"
-                "Contextual Information:\n{rag_summary}\n\n"
-                "Combined Insights:\n{combined_insights}\n\n"
-                "Cross-References:\n{cross_references}\n\n"
-                "Please provide a natural language response that:\n"
-                "1. Integrates both quantitative (SQL) and qualitative (RAG) insights\n"
-                "2. Shows how the structured data and contextual information complement each other\n"
-                "3. Provides a complete picture addressing the user question\n"
-                "4. Highlights any interesting patterns or correlations found\n"
-                "5. Organizes the response logically from general findings to specific details\n\n"
-                "Response:")
+        return """Provide a comprehensive response that combines both data sources about Fetii's rideshare operations.
+
+User Question: {query}
+
+SQL Results:
+{sql_summary}
+
+Context Information:
+{rag_summary}
+
+Please provide a natural language response that:
+1. Directly answers the user's question using both data sources
+2. Integrates quantitative and qualitative insights naturally
+3. Highlights the most relevant findings about Fetii operations
+4. Keep the response focused and conversational
+5. Avoid technical details about data validation or processing
+
+Response:"""
+    
+    def validate_sql_results(self, sql_result: Dict[str, Any]) -> Dict[str, str]:
+        """Validate SQL results and generate quality notes"""
+        quality_notes = []
+        
+        if not sql_result.get('success'):
+            return {'data_quality_notes': f"Query failed: {sql_result.get('error', 'Unknown error')}"}
+        
+        data = sql_result.get('data')
+        row_count = sql_result.get('row_count', 0)
+        
+        # Check for empty results
+        if row_count == 0:
+            quality_notes.append("No matching records found")
+        
+        # Check for data quality issues if DataFrame
+        if isinstance(data, pd.DataFrame) and len(data) > 0:
+            # Check for null values
+            null_counts = data.isnull().sum()
+            if null_counts.any():
+                null_cols = [col for col, count in null_counts.items() if count > 0]
+                quality_notes.append(f"Some null values found in columns: {', '.join(null_cols)}")
+            
+            # Check for age-related queries with missing data
+            if 'Age' in data.columns:
+                null_ages = data['Age'].isnull().sum()
+                if null_ages > 0:
+                    quality_notes.append(f"{null_ages} records have missing age data")
+            
+            # Check for reasonable data ranges
+            if 'TotalPassengers' in data.columns:
+                max_passengers = data['TotalPassengers'].max()
+                if max_passengers > 20:
+                    quality_notes.append(f"Some unusually large groups found (max: {max_passengers} passengers)")
+        
+        return {'data_quality_notes': '; '.join(quality_notes) if quality_notes else 'Data appears complete'}
     
     def format_sql_results(self, sql_result: Dict[str, Any]) -> str:
         """Format SQL results for inclusion in prompts"""
@@ -207,6 +267,8 @@ class ResponseGenerator:
                             if col in sql_data.columns:
                                 mean_val = sql_data[col].mean()
                                 sql_summary += f"Average {col}: {mean_val:.2f}. "
+                else:
+                    sql_summary = f"SQL query executed but returned no results: {hybrid_result['sql_result'].get('error', 'Empty result set')}"
             
             # Format RAG summary
             if hybrid_result.get('rag_result') and hybrid_result['rag_result'].get('success'):
@@ -220,6 +282,8 @@ class ResponseGenerator:
                     types = [snippet.get('type', 'unknown') for snippet in rag_data['context_snippets']]
                     type_counts = {t: types.count(t) for t in set(types)}
                     rag_summary += f"Context types: {', '.join([f'{k}({v})' for k, v in type_counts.items()])}."
+                else:
+                    rag_summary = "RAG search completed but found no relevant context."
             
             # Format combined insights
             if hybrid_result.get('combined_insights'):
@@ -263,40 +327,7 @@ class ResponseGenerator:
                 'cross_references': f"Error finding cross-references: {str(e)}"
             }
     
-    def format_conversation_context(self, chat_history: List[Dict] = None) -> str:
-        """Format the last 7 messages for conversation context"""
-        if not chat_history:
-            return "No previous conversation."
-        
-        # Get last 7 messages
-        recent_history = chat_history[-7:] if len(chat_history) > 7 else chat_history
-        
-        context_text = ""
-        for i, entry in enumerate(recent_history):
-            user_query = entry.get('query', 'Unknown query')
-            # Get the response from either processing_result or response_result
-            response = None
-            if entry.get('response_result', {}).get('success'):
-                response = entry['response_result']['response']
-            elif entry.get('processing_result', {}).get('success'):
-                # Try to extract a short summary from processing result
-                processing = entry['processing_result']
-                if processing.get('results', {}).get('data') is not None:
-                    data = processing['results']['data']
-                    if isinstance(data, pd.DataFrame):
-                        response = f"Found {len(data)} records"
-                    else:
-                        response = "Data retrieved"
-                else:
-                    response = "Query processed"
-            else:
-                response = "No response available"
-            
-            context_text += f"Q{i+1}: {user_query}\nA{i+1}: {response[:100]}...\n\n"
-        
-        return context_text.strip()
-
-    def generate_sql_response(self, query: str, sql_result: Dict[str, Any], chat_history: List[Dict] = None) -> Dict[str, Any]:
+    def generate_sql_response(self, query: str, sql_result: Dict[str, Any]) -> Dict[str, Any]:
         """Generate response for SQL-only results"""
         if not self.openai_api_key:
             return {
@@ -306,18 +337,19 @@ class ResponseGenerator:
             }
         
         try:
-            # Format SQL results
+            # Validate and format SQL results
+            validation = self.validate_sql_results(sql_result)
             formatted_results = self.format_sql_results(sql_result)
-            
-            # Format conversation context
-            conversation_context = self.format_conversation_context(chat_history)
             
             # Prepare prompt
             prompt = self.sql_prompt_template.format(
                 query=query,
+                sql_query=sql_result.get('sql_query', 'Query not available'),
                 sql_results=formatted_results,
                 row_count=sql_result.get('row_count', 0),
-                conversation_context=conversation_context
+                execution_time=sql_result.get('execution_time', 0),
+                data_type=sql_result.get('data_type', 'unknown'),
+                data_quality_notes=validation['data_quality_notes']
             )
             
             # Generate response
@@ -340,7 +372,8 @@ class ResponseGenerator:
                 'success': True,
                 'response': generated_response,
                 'response_type': 'sql',
-                'tokens_used': response.usage.total_tokens
+                'tokens_used': response.usage.total_tokens,
+                'generation_time': 0  # Could add timing if needed
             }
             
         except Exception as e:
@@ -351,7 +384,7 @@ class ResponseGenerator:
                 'response': None
             }
     
-    def generate_rag_response(self, query: str, rag_result: Dict[str, Any], chat_history: List[Dict] = None) -> Dict[str, Any]:
+    def generate_rag_response(self, query: str, rag_result: Dict[str, Any]) -> Dict[str, Any]:
         """Generate response for RAG-only results"""
         if not self.openai_api_key:
             return {
@@ -393,7 +426,8 @@ class ResponseGenerator:
                 'success': True,
                 'response': generated_response,
                 'response_type': 'rag',
-                'tokens_used': response.usage.total_tokens
+                'tokens_used': response.usage.total_tokens,
+                'generation_time': 0
             }
             
         except Exception as e:
@@ -404,8 +438,8 @@ class ResponseGenerator:
                 'response': None
             }
     
-    def generate_hybrid_response(self, query: str, hybrid_result: Dict[str, Any], chat_history: List[Dict] = None) -> Dict[str, Any]:
-        """Generate response for hybrid SQL+RAG results"""
+    def generate_hybrid_response(self, query: str, hybrid_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate response for hybrid results"""
         if not self.openai_api_key:
             return {
                 'success': False,
@@ -446,7 +480,8 @@ class ResponseGenerator:
                 'success': True,
                 'response': generated_response,
                 'response_type': 'hybrid',
-                'tokens_used': response.usage.total_tokens
+                'tokens_used': response.usage.total_tokens,
+                'generation_time': 0
             }
             
         except Exception as e:
@@ -457,36 +492,29 @@ class ResponseGenerator:
                 'response': None
             }
     
-    def generate_response(self, query: str, processing_result: Dict[str, Any], chat_history: List[Dict] = None) -> Dict[str, Any]:
+    def generate_response(self, query: str, processing_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Main method to generate natural language response based on processing results
+        Main method to generate response based on processing results
         
         Args:
-            query: Original user query
+            query: User's original query
             processing_result: Results from hybrid controller
             
         Returns:
-            Dictionary with generated response and metadata
+            Dictionary with generated response
         """
         start_time = datetime.now()
         
         try:
-            # Determine processing type and route to appropriate generator
-            processing_type = processing_result.get('processing_type', 'unknown')
+            processing_type = processing_result.get('processing_type')
             results = processing_result.get('results', {})
             
             if processing_type == 'SQL':
-                response_result = self.generate_sql_response(query, results, chat_history)
-                
+                response_result = self.generate_sql_response(query, results)
             elif processing_type == 'RAG':
-                response_result = self.generate_rag_response(query, results, chat_history)
-                
+                response_result = self.generate_rag_response(query, results)
             elif processing_type == 'HYBRID':
-                response_result = self.generate_hybrid_response(query, results, chat_history)
-                
-            elif processing_type == 'OFF_TOPIC':
-                response_result = self.generate_off_topic_response(query)
-                
+                response_result = self.generate_hybrid_response(query, results)
             else:
                 return {
                     'success': False,
@@ -494,25 +522,9 @@ class ResponseGenerator:
                     'response': None
                 }
             
-            # Add metadata
+            # Add generation time
             generation_time = (datetime.now() - start_time).total_seconds()
-            
-            response_result.update({
-                'query': query,
-                'processing_type': processing_type,
-                'generation_time': generation_time,
-                'timestamp': datetime.now().isoformat(),
-                'processing_success': processing_result.get('success', False)
-            })
-            
-            # Add fallback response if generation failed but processing succeeded
-            if not response_result['success'] and processing_result.get('success'):
-                fallback_response = self.generate_fallback_response(query, processing_result)
-                response_result.update({
-                    'success': True,
-                    'response': fallback_response,
-                    'response_type': 'fallback'
-                })
+            response_result['generation_time'] = generation_time
             
             return response_result
             
@@ -522,153 +534,91 @@ class ResponseGenerator:
                 'success': False,
                 'error': str(e),
                 'response': None,
-                'query': query,
                 'generation_time': (datetime.now() - start_time).total_seconds()
             }
     
-    def generate_off_topic_response(self, query: str) -> Dict[str, Any]:
-        """Generate response for off-topic queries"""
-        try:
-            # Polite rejection message
-            response = "I am FetiiGPT, specialized in analyzing Fetii Austin rideshare data. I can only answer questions about transportation patterns, trip data, user demographics, and group rideshare analytics. Please ask me something about Fetii transportation data instead!"
-            
-            return {
-                'success': True,
-                'response': response,
-                'response_type': 'off_topic_rejection',
-                'generation_time': 0.001
-            }
-            
-        except Exception as e:
-            logger.error(f"Error generating off-topic response: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'response': None
-            }
-    
     def generate_fallback_response(self, query: str, processing_result: Dict[str, Any]) -> str:
-        """Generate a simple fallback response when LLM generation fails"""
+        """Generate a fallback response when main generation fails"""
         try:
             processing_type = processing_result.get('processing_type', 'unknown')
-            results = processing_result.get('results', {})
+            error = processing_result.get('error', 'Unknown error')
             
-            if processing_type == 'SQL' and results.get('success'):
-                data = results.get('data')
-                if isinstance(data, pd.DataFrame):
-                    return f"I found {len(data)} records in response to your query about: {query}. The data includes {len(data.columns)} columns: {', '.join(data.columns)}."
-                else:
-                    return f"I processed your SQL query about: {query}. The query executed successfully."
+            fallback = f"I apologize, but I encountered an issue processing your query about Fetii's rideshare data.\n\n"
             
-            elif processing_type == 'RAG' and results.get('success'):
-                snippet_count = results.get('returned_results', 0)
-                return f"I found {snippet_count} relevant records related to your query about: {query}."
+            if processing_type == 'SQL':
+                fallback += f"The database query failed with error: {error}\n\n"
+                fallback += "This might be due to:\n"
+                fallback += "- Complex query requirements\n"
+                fallback += "- Data availability issues\n"
+                fallback += "- Temporary system issues\n\n"
+                fallback += "Please try rephrasing your question or asking about a different aspect of the Fetii data."
+            
+            elif processing_type == 'RAG':
+                fallback += f"The context search failed with error: {error}\n\n"
+                fallback += "This might be due to:\n"
+                fallback += "- No relevant information found\n"
+                fallback += "- Search index issues\n"
+                fallback += "- Query complexity\n\n"
+                fallback += "Please try asking about specific users, trips, or general Fetii patterns."
             
             elif processing_type == 'HYBRID':
-                sql_success = results.get('sql_result', {}).get('success', False)
-                rag_success = results.get('rag_result', {}).get('success', False)
-                return f"I processed your query about: {query} using both structured data analysis (SQL: {'successful' if sql_success else 'failed'}) and contextual search (RAG: {'successful' if rag_success else 'failed'})."
+                fallback += f"The combined analysis failed with error: {error}\n\n"
+                fallback += "Please try asking a more specific question about either:\n"
+                fallback += "- Numerical data (counts, averages, trends)\n"
+                fallback += "- Specific user or trip information\n"
             
             else:
-                return f"I processed your query about: {query}, but encountered an issue generating a detailed response. Please try rephrasing your question."
-                
+                fallback += f"Query processing failed: {error}\n\n"
+                fallback += "Please try asking a simpler question about Fetii's Austin rideshare data."
+            
+            return fallback
+            
         except Exception as e:
-            return f"I attempted to process your query about: {query}, but encountered technical difficulties. Please try again."
+            logger.error(f"Error generating fallback response: {e}")
+            return "I apologize, but I'm experiencing technical difficulties. Please try your question again."
 
 def main():
-    """Test the response generator with sample data"""
-    print("Testing Response Generation Layer")
-    print("=" * 50)
+    """Test the Response Generator functionality"""
+    print("Testing Response Generator")
+    print("=" * 60)
     
-    # Initialize response generator
-    response_gen = ResponseGenerator()
+    # Initialize generator
+    generator = ResponseGenerator()
     
-    if not response_gen.openai_api_key:
-        print("OpenAI API key not found. Cannot test response generation.")
-        print("Please set OPENAI_API_KEY in your .env file.")
-        return
-    
-    # Test SQL response generation
-    print("\n1. Testing SQL Response Generation:")
-    print("-" * 40)
-    
-    sample_sql_result = {
+    # Test with mock data
+    mock_sql_result = {
         'success': True,
-        'sql_query': 'SELECT COUNT(*) as total_users FROM CustomerDemographics',
-        'data': pd.DataFrame({'total_users': [150]}),
-        'row_count': 1,
+        'data': pd.DataFrame({
+            'DropOffAddress': ['Moody Center', 'Downtown Austin', '6th Street'],
+            'trip_count': [15, 23, 8]
+        }),
+        'row_count': 3,
         'execution_time': 0.045,
-        'data_type': 'dataframe'
+        'data_type': 'dataframe',
+        'sql_query': 'SELECT DropOffAddress, COUNT(*) as trip_count FROM TripData GROUP BY DropOffAddress'
     }
     
-    sql_response = response_gen.generate_sql_response(
-        query="How many users are in the database?", 
-        sql_result=sample_sql_result
-    )
-    
-    if sql_response['success']:
-        print(f"SQL Response: {sql_response['response']}")
-        print(f"Tokens used: {sql_response.get('tokens_used', 'N/A')}")
-    else:
-        print(f"SQL Response failed: {sql_response['error']}")
-    
-    # Test RAG response generation
-    print("\n2. Testing RAG Response Generation:")
-    print("-" * 40)
-    
-    sample_rag_result = {
-        'success': True,
-        'context_snippets': [
-            {
-                'rank': 1,
-                'relevance_score': 0.85,
-                'content': 'Customer profile: User ID: 168928, Age: 26 years old, Gender: Male',
-                'type': 'demographics',
-                'identifiers': 'UserID: 168928'
-            },
-            {
-                'rank': 2,
-                'relevance_score': 0.72,
-                'content': 'Transportation trip: Trip ID: 726765, Pickup location: Downtown, Passengers: 5',
-                'type': 'trip',
-                'identifiers': 'TripID: 726765'
-            }
-        ],
-        'total_results': 5,
-        'returned_results': 2,
-        'search_metadata': {'model_used': 'all-MiniLM-L6-v2'}
-    }
-    
-    rag_response = response_gen.generate_rag_response(
-        query="Tell me about user 168928",
-        rag_result=sample_rag_result
-    )
-    
-    if rag_response['success']:
-        print(f"RAG Response: {rag_response['response']}")
-        print(f"Tokens used: {rag_response.get('tokens_used', 'N/A')}")
-    else:
-        print(f"RAG Response failed: {rag_response['error']}")
-    
-    # Test fallback response
-    print("\n3. Testing Fallback Response:")
-    print("-" * 40)
-    
-    sample_processing_result = {
-        'success': True,
+    mock_processing_result = {
         'processing_type': 'SQL',
-        'results': sample_sql_result
+        'results': mock_sql_result,
+        'success': True
     }
     
-    fallback_response = response_gen.generate_fallback_response(
-        query="How many users are in the database?",
-        processing_result=sample_processing_result
-    )
+    test_query = "What are the most popular drop-off locations?"
     
-    print(f"Fallback Response: {fallback_response}")
+    print(f"Testing query: '{test_query}'")
+    print("-" * 40)
     
-    print(f"\n{'='*50}")
-    print("Response Generation Testing Complete")
+    response_result = generator.generate_response(test_query, mock_processing_result)
+    
+    print(f"Success: {response_result['success']}")
+    if response_result['success']:
+        print(f"Response: {response_result['response']}")
+        print(f"Tokens used: {response_result.get('tokens_used', 'N/A')}")
+        print(f"Generation time: {response_result.get('generation_time', 0):.3f}s")
+    else:
+        print(f"Error: {response_result['error']}")
+        print(f"Fallback: {generator.generate_fallback_response(test_query, mock_processing_result)}")
 
 if __name__ == "__main__":
     main()

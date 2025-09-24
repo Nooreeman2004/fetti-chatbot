@@ -1,18 +1,24 @@
 version: '3.8'
 
 services:
-  fetii-chatbot:
-    build: .
+  # Streamlit UI Service
+  fetii-ui:
+    build:
+      context: .
+      target: streamlit-ui
     ports:
       - "8501:8501"
     env_file:
       - .env
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
     volumes:
       - ./database:/app/database
       - ./embeddings:/app/embeddings
       - ./data:/app/data
+      - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
@@ -20,3 +26,75 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    depends_on:
+      - fetii-api
+    networks:
+      - fetii-network
+
+  # FastAPI Backend Service
+  fetii-api:
+    build:
+      context: .
+      target: fastapi-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - RELOAD=false
+      - LOG_LEVEL=info
+    volumes:
+      - ./database:/app/database
+      - ./embeddings:/app/embeddings
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - fetii-network
+
+  # Development service (optional)
+  fetii-dev:
+    build:
+      context: .
+      target: development
+    ports:
+      - "8502:8501"
+    env_file:
+      - .env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
+      - ENVIRONMENT=development
+      - RELOAD=true
+    volumes:
+      - ./database:/app/database
+      - ./embeddings:/app/embeddings
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - .:/app  # Mount source code for development
+    restart: unless-stopped
+    profiles:
+      - dev
+    networks:
+      - fetii-network
+
+networks:
+  fetii-network:
+    driver: bridge
+
+volumes:
+  database-data:
+  embeddings-data:
+  logs-data:

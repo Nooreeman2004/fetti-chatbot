@@ -44,17 +44,24 @@ st.markdown("""
         padding: 1rem;
         border-radius: 0.8rem;
         margin: 0.5rem 0;
+        line-height: 1.6;
+        font-size: 1rem;
     }
     
     .user-message {
         background-color: #e3f2fd;
+        border: 1px solid #2196f3;
         border-left: 4px solid #2196f3;
+        color: #1a1a1a;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     .bot-message {
-        background-color: #f5f5f5;
+        background-color: #ffffff;
+        border: 1px solid #4caf50;
         border-left: 4px solid #4caf50;
-        color: #333333;
+        color: #2e2e2e;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     .error-message {
@@ -80,63 +87,21 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
-    /* Ensure text visibility */
-    .stApp {
-        color: #333333;
+    /* Ensure text visibility in all elements */
+    .stMarkdown, .stText, .stTextInput, .stTextArea {
+        color: #2e2e2e !important;
     }
     
-    .stMarkdown {
-        color: #333333;
+    /* Improve readability for bot responses */
+    .bot-message p, .bot-message div, .bot-message span {
+        color: #2e2e2e !important;
+        font-weight: 400;
     }
     
-    .stTextInput > div > div > input {
-        color: #333333;
-    }
-    
-    .stButton > button {
-        color: #333333;
-    }
-    
-    /* Fix sidebar button text visibility */
-    .stSidebar .stButton > button {
-        color: #333333 !important;
-        background-color: #f0f2f6 !important;
-        border: 1px solid #e0e0e0 !important;
-    }
-    
-    .stSidebar .stButton > button:hover {
-        background-color: #e0e0e0 !important;
-        color: #000000 !important;
-    }
-    
-    /* Fix sidebar text visibility */
-    .stSidebar .stMarkdown {
-        color: #333333 !important;
-    }
-    
-    .stSidebar .stText {
-        color: #333333 !important;
-    }
-    
-    /* Additional sidebar button styling */
-    .stSidebar .stButton > button {
-        width: 100% !important;
-        text-align: left !important;
-        padding: 0.5rem !important;
-        margin: 0.2rem 0 !important;
-        font-size: 0.9rem !important;
-        line-height: 1.3 !important;
-        white-space: normal !important;
-        word-wrap: break-word !important;
-    }
-    
-    /* Fix any dark theme issues */
-    .stSidebar {
-        background-color: #f8f9fa !important;
-    }
-    
-    .stSidebar .stButton > button:focus {
-        box-shadow: 0 0 0 2px #1f77b4 !important;
+    /* Ensure strong text is visible */
+    .bot-message strong, .bot-message b {
+        color: #1a1a1a !important;
+        font-weight: 600;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -240,11 +205,8 @@ class ChatbotUI:
                 # Get processing results from hybrid controller
                 processing_result = self.hybrid_controller.process_query(query)
                 
-                # Get chat history for context
-                chat_history = st.session_state.get('chat_history', [])
-                
-                # Generate natural language response with chat history context
-                response_result = self.response_generator.generate_response(query, processing_result, chat_history)
+                # Generate natural language response
+                response_result = self.response_generator.generate_response(query, processing_result)
                 
                 # Display bot response
                 if response_result['success']:
@@ -479,9 +441,20 @@ def main():
         4. **Environment Variables**: Check your `.env` file contains:
            ```
            OPENAI_API_KEY=your-key-here
+           PINECONE_API_KEY=your-pinecone-key-here
            ```
         
         5. **File Structure**: Verify all Python files are in the correct locations.
+        
+        6. **Manual Setup**: If automatic setup fails, you can run:
+           ```bash
+           python database/seed_data.py
+           python embeddings/build_openai_pinecone_embeddings.py
+           ```
+           
+        **Note**: Database and Pinecone embeddings are now automatically initialized when you run the app!
+        
+        7. **Pinecone Setup**: Make sure your Pinecone index exists and you have valid API keys
         """)
 
 if __name__ == "__main__":

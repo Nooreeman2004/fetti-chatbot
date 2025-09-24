@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # Development Streamlit UI
+  fetii-ui-dev:
+    build:
+      context: .
+      target: development
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
+      - ENVIRONMENT=development
+      - RELOAD=true
+    volumes:
+      - ./database:/app/database
+      - ./embeddings:/app/embeddings
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - .:/app  # Mount source code for hot reload
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - fetii-network
+
+  # Development FastAPI Backend
+  fetii-api-dev:
+    build:
+      context: .
+      target: development
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - RELOAD=true
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=development
+    volumes:
+      - ./database:/app/database
+      - ./embeddings:/app/embeddings
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - .:/app  # Mount source code for hot reload
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - fetii-network
+
+  # Database service (if using external database)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=fetii_chatbot
+      - POSTGRES_USER=fetii
+      - POSTGRES_PASSWORD=fetii_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - fetii-network
+    profiles:
+      - postgres
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - fetii-network
+    profiles:
+      - redis
+
+networks:
+  fetii-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

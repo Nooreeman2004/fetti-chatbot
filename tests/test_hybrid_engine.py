@@ -278,7 +278,7 @@ class TestHybridController:
         assert 'SQL Engine not initialized' in result['error']
         assert result['query_type'] == 'SQL'
     
-    @patch('chatbot.hybrid_controller.RAGEngine')
+    @patch('chatbot.hybrid_controller.OpenAIPineconeRAGEngine')
     def test_process_rag_query_success(self, mock_rag_engine_class, hybrid_controller):
         """Test successful RAG query processing"""
         # Mock RAG engine
@@ -321,7 +321,7 @@ class TestHybridController:
         assert result['query_type'] == 'RAG'
     
     @patch('chatbot.hybrid_controller.SQLEngine')
-    @patch('chatbot.hybrid_controller.RAGEngine')
+    @patch('chatbot.hybrid_controller.OpenAIPineconeRAGEngine')
     def test_process_hybrid_query_success(self, mock_rag_engine_class, mock_sql_engine_class, hybrid_controller):
         """Test successful hybrid query processing"""
         # Mock SQL engine
@@ -416,7 +416,7 @@ class TestHybridController:
     
     @patch('chatbot.hybrid_controller.QueryClassifier')
     @patch('chatbot.hybrid_controller.SQLEngine')
-    @patch('chatbot.hybrid_controller.RAGEngine')
+    @patch('chatbot.hybrid_controller.OpenAIPineconeRAGEngine')
     def test_process_query_sql_routing(self, mock_rag_class, mock_sql_class, mock_classifier_class, hybrid_controller):
         """Test query routing for SQL queries"""
         # Mock classifier to return SQL
@@ -448,7 +448,7 @@ class TestHybridController:
         assert result['classification']['classification'] == QueryType.SQL
     
     @patch('chatbot.hybrid_controller.QueryClassifier')
-    @patch('chatbot.hybrid_controller.RAGEngine')
+    @patch('chatbot.hybrid_controller.OpenAIPineconeRAGEngine')
     def test_process_query_rag_routing(self, mock_rag_class, mock_classifier_class, hybrid_controller):
         """Test query routing for RAG queries"""
         # Mock classifier to return RAG

@@ -2,7 +2,7 @@
   "embedding_model": "text-embedding-3-small",
   "vector_db": "pinecone",
   "total_embeddings": 21179,
-  "creation_timestamp": "2025-09-20T01:48:00.553570",
+  "creation_timestamp": "2025-09-24T23:35:10.809839",
   "db_path": "database/transportation.db",
   "index_name": "fetii-chatbot",
   "environment": "us-east-1"

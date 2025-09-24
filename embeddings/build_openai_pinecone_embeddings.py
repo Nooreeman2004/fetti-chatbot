@@ -59,20 +59,19 @@ class OpenAIPineconeEmbeddingLayer:
             self.pc = Pinecone(api_key=self.pinecone_api_key)
             
             # Check if index exists, create if not
-            existing_indexes = self.pc.list_indexes().names()
+            existing_indexes = [index.name for index in self.pc.list_indexes()]
             
             if self.index_name not in existing_indexes:
                 logger.info(f"Creating Pinecone index: {self.index_name}")
+                from pinecone import ServerlessSpec
                 self.pc.create_index(
                     name=self.index_name,
                     dimension=1536,  # OpenAI embedding dimension
                     metric='cosine',
-                    spec={
-                        'serverless': {
-                            'cloud': 'aws',
-                            'region': self.environment
-                        }
-                    }
+                    spec=ServerlessSpec(
+                        cloud='aws',
+                        region=self.environment
+                    )
                 )
                 # Wait for index to be ready
                 time.sleep(60)
@@ -395,9 +394,10 @@ class OpenAIPineconeEmbeddingLayer:
         """Get Pinecone index statistics"""
         try:
             stats = self.index.describe_index_stats()
-            logger.info(f"Pinecone index contains {stats['total_vector_count']} vectors")
+            total_vectors = stats.get('total_vector_count', 0)
+            logger.info(f"Pinecone index contains {total_vectors} vectors")
             return {
-                'total_vectors': stats['total_vector_count'],
+                'total_vectors': total_vectors,
                 'index_name': self.index_name,
                 'dimension': stats.get('dimension', 1536)
             }
